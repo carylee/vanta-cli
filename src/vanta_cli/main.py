@@ -20,6 +20,14 @@ def main(
         set_format(output)
 
 
+@app.command()
+def tui() -> None:
+    """Launch the interactive TUI for browsing Vanta data."""
+    from vanta_cli.tui.app import VantaTUI
+
+    VantaTUI().run()
+
+
 # Register command groups
 from vanta_cli.commands.controls import app as controls_app  # noqa: E402
 from vanta_cli.commands.customer_trust import app as customer_trust_app  # noqa: E402

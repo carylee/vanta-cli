@@ -148,6 +148,9 @@ class Sidebar(Tree[ResourceGroup]):
         self.guide_depth = 3
 
     def on_mount(self) -> None:
+        # Add changeset entry at the top
+        changeset_group = ResourceGroup("Staged Changes", "changeset", "", [])
+        self.root.add_leaf(changeset_group.label, data=changeset_group)
         for group in RESOURCE_GROUPS:
             self.root.add_leaf(group.label, data=group)
         self.root.expand()

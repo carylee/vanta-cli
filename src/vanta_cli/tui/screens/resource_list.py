@@ -9,9 +9,10 @@ from typing import Any
 from textual import on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
+from textual.containers import Horizontal
 from textual.message import Message
 from textual.screen import Screen
-from textual.widgets import DataTable, Footer, Header, Input, Static
+from textual.widgets import DataTable, Footer, Header, Input, RadioButton, RadioSet, Static
 
 from vanta_cli.tui.service import AsyncVantaService
 from vanta_cli.tui.widgets.sidebar import ResourceGroup
@@ -51,6 +52,7 @@ class ResourceListScreen(Screen):
         Binding("slash", "search", "Search"),
         Binding("n", "next_match", "Next", show=False),
         Binding("N", "prev_match", "Prev", key_display="shift+n", show=False),
+        Binding("f", "toggle_filters", "Filter"),
     ]
 
     class RowSelected(Message):
@@ -78,10 +80,19 @@ class ResourceListScreen(Screen):
         self._search_term: str = ""
         self._match_indices: list[int] = []
         self._match_pos: int = 0
+        # Filter state: maps param name -> (selected value, display label)
+        self._active_filters: dict[str, tuple[str | None, str]] = {}
 
     def compose(self) -> ComposeResult:
         yield Header()
         yield Static(self.group.label, classes="screen-title")
+        if self.group.filters:
+            with Horizontal(id="filter-bar") as bar:
+                bar.display = False
+                for fdef in self.group.filters:
+                    with RadioSet(id=f"filter-{fdef.param}"):
+                        for value, label in fdef.options:
+                            yield RadioButton(label)
         yield DataTable(id="resource-table")
         search = Input(placeholder="Search...", classes="search-input")
         search.display = False
@@ -98,7 +109,7 @@ class ResourceListScreen(Screen):
             self._bindings.bind("D", "download_all", "Download All", key_display="shift+d")
         self._load_page()
 
-    @work
+    @work(group="loader", exclusive=True)
     async def _load_page(self) -> None:
         status = self.query_one("#status-bar", Static)
         status.update("Loading...")
@@ -117,10 +128,7 @@ class ResourceListScreen(Screen):
             table.add_row(*values, key=row_key)
             self._items.append(item)
 
-        count_msg = f"{len(self._items)} items"
-        if self._has_more:
-            count_msg += " (space for more)"
-        status.update(count_msg)
+        self._update_status()
 
     def action_load_more(self) -> None:
         if self._has_more:
@@ -196,6 +204,13 @@ class ResourceListScreen(Screen):
             self._match_pos = 0
             self._update_status()
             self.query_one("#resource-table", DataTable).focus()
+        elif self.group.filters:
+            bar = self.query_one("#filter-bar")
+            if bar.display:
+                bar.display = False
+                self.query_one("#resource-table", DataTable).focus()
+                return
+            self.app.pop_screen()
         else:
             self.app.pop_screen()
 
@@ -224,13 +239,17 @@ class ResourceListScreen(Screen):
     def _update_status(self) -> None:
         """Update the status bar with match info or default item count."""
         status = self.query_one("#status-bar", Static)
+        # Build filter suffix
+        filter_parts = [f"{label}" for _param, (_val, label) in self._active_filters.items()]
+        filter_str = f" \\[{', '.join(filter_parts)}]" if filter_parts else ""
+
         if self._search_term and self._match_indices:
-            msg = f"match {self._match_pos + 1} of {len(self._match_indices)}"
+            msg = f"match {self._match_pos + 1} of {len(self._match_indices)}{filter_str}"
             status.update(msg)
         elif self._search_term and not self._match_indices:
-            status.update("no matches")
+            status.update(f"no matches{filter_str}")
         else:
-            count_msg = f"{len(self._items)} items"
+            count_msg = f"{len(self._items)} items{filter_str}"
             if self._has_more:
                 count_msg += " (space for more)"
             status.update(count_msg)
@@ -248,6 +267,58 @@ class ResourceListScreen(Screen):
             return
         self._match_pos = (self._match_pos - 1) % len(self._match_indices)
         self._jump_to_match()
+
+    # -- Filter actions ----------------------------------------------------------
+
+    def action_toggle_filters(self) -> None:
+        """Toggle the filter bar visibility."""
+        if not self.group.filters:
+            return
+        bar = self.query_one("#filter-bar")
+        bar.display = not bar.display
+        if bar.display:
+            # Focus the first RadioSet
+            radio_sets = self.query("#filter-bar RadioSet")
+            if radio_sets:
+                radio_sets.first().focus()
+        else:
+            self.query_one("#resource-table", DataTable).focus()
+
+    @on(RadioSet.Changed)
+    def _on_filter_changed(self, event: RadioSet.Changed) -> None:
+        """When a filter RadioSet changes, rebuild params and reload."""
+        if not self.group.filters:
+            return
+        # Map each RadioSet back to its FilterDef
+        self._active_filters.clear()
+        for fdef in self.group.filters:
+            radio_set = self.query_one(f"#filter-{fdef.param}", RadioSet)
+            idx = radio_set.pressed_index
+            if idx >= 0 and idx < len(fdef.options):
+                value, label = fdef.options[idx]
+                if value is not None:
+                    self._active_filters[fdef.param] = (value, label)
+        self._reset_and_reload()
+
+    def _reset_and_reload(self) -> None:
+        """Clear table and items, rebuild params from filters, and re-fetch."""
+        table = self.query_one("#resource-table", DataTable)
+        table.clear()
+        self._items.clear()
+        self._cursor = None
+        self._has_more = False
+        self._search_term = ""
+        self._match_indices = []
+        self._match_pos = 0
+        # Merge base params with filter params
+        self.params = dict(self.params or {})
+        # Remove old filter params
+        for fdef in self.group.filters:
+            self.params.pop(fdef.param, None)
+        # Add active filter params
+        for param, (value, _label) in self._active_filters.items():
+            self.params[param] = value
+        self._load_page()
 
     def action_download_all(self) -> None:
         if self.group.key != "policies":

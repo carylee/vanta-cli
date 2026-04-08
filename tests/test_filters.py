@@ -199,22 +199,24 @@ class TestFilterTriggersReload:
             initial_call_count = len(service.calls)
             assert initial_call_count >= 1
 
-            # Open filter bar and select "Failing"
+            # Open filter bar and select "Failing" (second option)
             await pilot.press("f")
             await pilot.pause()
-            # Click on the "Failing" radio button (second option in first RadioSet)
             radio_sets = screen.query("#filter-bar RadioSet")
             radio_set = radio_sets.first()
-            # Change the value by pressing right arrow (moves from "All" to "Failing")
             radio_set.focus()
             await pilot.pause()
-            await pilot.press("right")
+            # Navigate to "Failing" and select it, wait for async reload
+            await pilot.press("down")
+            await pilot.press("space")
             await pilot.pause()
-            await pilot.pause()  # extra pause for async reload
+            await pilot.pause()
+            await pilot.pause()
 
             # Should have made a new API call with the filter param
             new_calls = service.calls[initial_call_count:]
-            assert len(new_calls) >= 1, "Expected a new API call after filter change"
+            assert len(new_calls) >= 1, \
+                f"Expected a new API call after filter change, calls: {service.calls}"
             last_call = new_calls[-1]
             assert last_call["params"].get("statusFilter") == "NEEDS_ATTENTION", \
                 f"Expected statusFilter=NEEDS_ATTENTION, got {last_call['params']}"
@@ -236,7 +238,9 @@ class TestFilterTriggersReload:
             radio_set = radio_sets.first()
             radio_set.focus()
             await pilot.pause()
-            await pilot.press("right")
+            await pilot.press("down")
+            await pilot.press("space")
+            await pilot.pause()
             await pilot.pause()
             await pilot.pause()
 
@@ -261,7 +265,9 @@ class TestFilterStatusBar:
             radio_set = radio_sets.first()
             radio_set.focus()
             await pilot.pause()
-            await pilot.press("right")
+            await pilot.press("down")
+            await pilot.press("space")
+            await pilot.pause()
             await pilot.pause()
             await pilot.pause()
 

@@ -1,3 +1,2 @@
 - Always use `uv` for python
-- Some api documentation for Vanta is available in api-docs/
 - Example .env is avialable with the same structure in .env.example and can be read with python-dotenv

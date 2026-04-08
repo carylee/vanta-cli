@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from textual.binding import Binding
 from textual.message import Message
 from textual.widgets import Tree
+
+
+@dataclass
+class FilterDef:
+    """Definition of a server-side filter for an API endpoint."""
+
+    label: str  # Display label, e.g. "Status"
+    param: str  # API query param, e.g. "statusFilter"
+    options: list[tuple[str | None, str]]  # (value, display_label) pairs; None means no filter
 
 
 @dataclass
@@ -17,6 +26,7 @@ class ResourceGroup:
     key: str
     api_path: str
     columns: list[tuple[str, str]]
+    filters: list[FilterDef] = field(default_factory=list)
 
 
 RESOURCE_GROUPS: list[ResourceGroup] = [

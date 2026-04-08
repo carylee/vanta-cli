@@ -60,9 +60,12 @@ class VantaClient:
                 "Forbidden (403). Your API credentials may not have the required scope."
             )
         resp.raise_for_status()
-        if resp.status_code == 204:
+        if resp.status_code == 204 or not resp.content:
             return {}
-        return resp.json()
+        try:
+            return resp.json()
+        except ValueError:
+            return {}
 
     def get(self, path: str, params: dict[str, Any] | None = None) -> Any:
         resp = self._http.get(path, headers=self._headers(), params=params)

@@ -168,8 +168,11 @@ class VantaTUI(App):
         from vanta_cli.client import VantaClient
         from vanta_cli.config import Settings
 
-        def apply_change(change: dict) -> bool:
-            """Apply a single change using the default profile."""
+        def apply_change(change: dict) -> str | None:
+            """Apply a single change using the default profile.
+
+            Returns None on success, or an error message string on failure.
+            """
             try:
                 settings = Settings.load(profile="default")
                 client = VantaClient(settings=settings)
@@ -184,9 +187,9 @@ class VantaTUI(App):
                     client.delete(path)
                 elif method == "PUT":
                     client.put(path, json=body)
-                return True
-            except Exception:
-                return False
+                return None
+            except Exception as exc:
+                return str(exc)
 
         screen = ChangesetScreen(
             changeset_file=CHANGESET_FILE,

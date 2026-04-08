@@ -32,6 +32,13 @@ class ResourceGroup:
 RESOURCE_GROUPS: list[ResourceGroup] = [
     ResourceGroup("Tests", "tests", "/tests", [
         ("id", "ID"), ("name", "Name"), ("status", "Status"), ("category", "Category"),
+    ], filters=[
+        FilterDef("Status", "statusFilter", [
+            (None, "All"),
+            ("NEEDS_ATTENTION", "Failing"),
+            ("OK", "Passing"),
+            ("DEACTIVATED", "Deactivated"),
+        ]),
     ]),
     ResourceGroup("Controls", "controls", "/controls", [
         ("externalId", "ID"), ("name", "Name"), ("owner.displayName", "Owner"),
@@ -43,6 +50,13 @@ RESOURCE_GROUPS: list[ResourceGroup] = [
     ]),
     ResourceGroup("People", "people", "/people", [
         ("id", "ID"), ("name.display", "Name"), ("email", "Email"), ("employment.status", "Status"),
+    ], filters=[
+        FilterDef("Status", "employmentStatus", [
+            (None, "All"),
+            ("CURRENT", "Current"),
+            ("FORMER", "Former"),
+            ("INACTIVE", "Inactive"),
+        ]),
     ]),
     ResourceGroup("Policies", "policies", "/policies", [
         ("id", "ID"), ("name", "Name"), ("status", "Status"),
@@ -50,6 +64,13 @@ RESOURCE_GROUPS: list[ResourceGroup] = [
     ResourceGroup("Vendors", "vendors", "/vendors", [
         ("id", "ID"), ("name", "Name"), ("category.displayName", "Category"),
         ("inherentRiskLevel", "Risk"), ("status", "Status"),
+    ], filters=[
+        FilterDef("Status", "statusMatchesAny", [
+            (None, "All"),
+            ("MANAGED", "Managed"),
+            ("ARCHIVED", "Archived"),
+            ("IN_PROCUREMENT", "In Procurement"),
+        ]),
     ]),
     ResourceGroup("Documents", "documents", "/documents", [
         ("id", "ID"), ("title", "Title"), ("category", "Category"), ("uploadStatus", "Status"),
@@ -59,6 +80,19 @@ RESOURCE_GROUPS: list[ResourceGroup] = [
     ]),
     ResourceGroup("Vulnerabilities", "vulnerabilities", "/vulnerabilities", [
         ("id", "ID"), ("title", "Title"), ("severity", "Severity"), ("status", "Status"),
+    ], filters=[
+        FilterDef("Severity", "severity", [
+            (None, "All"),
+            ("CRITICAL", "Critical"),
+            ("HIGH", "High"),
+            ("MEDIUM", "Medium"),
+            ("LOW", "Low"),
+        ]),
+        FilterDef("Active", "isDeactivated", [
+            ("false", "Active"),
+            ("true", "Deactivated"),
+            (None, "All"),
+        ]),
     ]),
     ResourceGroup("Vulnerable Assets", "vulnerable-assets", "/vulnerable-assets", [
         ("id", "ID"), ("name", "Name"), ("assetType", "Type"),

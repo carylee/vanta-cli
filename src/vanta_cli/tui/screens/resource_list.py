@@ -6,12 +6,12 @@ import re
 from pathlib import Path
 from typing import Any
 
-from textual import work
+from textual import on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.message import Message
 from textual.screen import Screen
-from textual.widgets import DataTable, Footer, Header, Static
+from textual.widgets import DataTable, Footer, Header, Input, Static
 
 from vanta_cli.tui.service import AsyncVantaService
 from vanta_cli.tui.widgets.sidebar import ResourceGroup
@@ -48,6 +48,9 @@ class ResourceListScreen(Screen):
         Binding("space", "load_more", "More"),
         Binding("g", "scroll_top", "Top"),
         Binding("G", "scroll_bottom", "Bottom", key_display="shift+g"),
+        Binding("slash", "search", "Search"),
+        Binding("n", "next_match", "Next", show=False),
+        Binding("N", "prev_match", "Prev", key_display="shift+n", show=False),
     ]
 
     class RowSelected(Message):
@@ -71,11 +74,18 @@ class ResourceListScreen(Screen):
         self._items: list[dict[str, Any]] = []
         self._cursor: str | None = None
         self._has_more = False
+        # Search state
+        self._search_term: str = ""
+        self._match_indices: list[int] = []
+        self._match_pos: int = 0
 
     def compose(self) -> ComposeResult:
         yield Header()
         yield Static(self.group.label, classes="screen-title")
         yield DataTable(id="resource-table")
+        search = Input(placeholder="Search...", classes="search-input")
+        search.display = False
+        yield search
         yield Static("", id="status-bar")
         yield Footer()
 
@@ -116,9 +126,6 @@ class ResourceListScreen(Screen):
         if self._has_more:
             self._load_page()
 
-    def action_go_back(self) -> None:
-        self.app.pop_screen()
-
     def action_cursor_down(self) -> None:
         table = self.query_one("#resource-table", DataTable)
         table.action_cursor_down()
@@ -144,6 +151,103 @@ class ResourceListScreen(Screen):
         if table.cursor_row is not None and table.cursor_row < len(self._items):
             item = self._items[table.cursor_row]
             self.post_message(self.RowSelected(item, self.group))
+
+    # -- Search actions ----------------------------------------------------------
+
+    def action_search(self) -> None:
+        """Show the search input and focus it."""
+        search = self.query_one("Input.search-input", Input)
+        search.display = True
+        search.value = ""
+        search.focus()
+
+    @on(Input.Submitted, ".search-input")
+    def _on_search_submitted(self, event: Input.Submitted) -> None:
+        """Confirm search: compute matches and jump to the first one."""
+        search = self.query_one("Input.search-input", Input)
+        term = search.value.strip()
+        search.display = False
+
+        self._search_term = term
+        self._compute_matches()
+
+        if self._match_indices:
+            self._match_pos = 0
+            self._jump_to_match()
+        else:
+            self._update_status()
+
+        # Return focus to the table
+        self.query_one("#resource-table", DataTable).focus()
+
+    def _on_search_input_key(self, event) -> None:
+        """Handle Escape inside the search input."""
+        # This is handled by the screen-level escape binding,
+        # but we override go_back when search is open.
+        pass
+
+    def action_go_back(self) -> None:
+        search = self.query_one("Input.search-input", Input)
+        if search.display:
+            # Close search instead of navigating back
+            search.display = False
+            self._search_term = ""
+            self._match_indices = []
+            self._match_pos = 0
+            self._update_status()
+            self.query_one("#resource-table", DataTable).focus()
+        else:
+            self.app.pop_screen()
+
+    def _compute_matches(self) -> None:
+        """Find indices of items matching the current search term."""
+        if not self._search_term:
+            self._match_indices = []
+            return
+        term = self._search_term.lower()
+        matches = []
+        for i, item in enumerate(self._items):
+            values = [resolve_key(item, key).lower() for key, _ in self.group.columns]
+            if any(term in v for v in values):
+                matches.append(i)
+        self._match_indices = matches
+
+    def _jump_to_match(self) -> None:
+        """Move the table cursor to the current match and update status."""
+        if not self._match_indices:
+            return
+        row = self._match_indices[self._match_pos]
+        table = self.query_one("#resource-table", DataTable)
+        table.move_cursor(row=row)
+        self._update_status()
+
+    def _update_status(self) -> None:
+        """Update the status bar with match info or default item count."""
+        status = self.query_one("#status-bar", Static)
+        if self._search_term and self._match_indices:
+            msg = f"match {self._match_pos + 1} of {len(self._match_indices)}"
+            status.update(msg)
+        elif self._search_term and not self._match_indices:
+            status.update("no matches")
+        else:
+            count_msg = f"{len(self._items)} items"
+            if self._has_more:
+                count_msg += " (space for more)"
+            status.update(count_msg)
+
+    def action_next_match(self) -> None:
+        """Jump to the next search match (wraps around)."""
+        if not self._match_indices:
+            return
+        self._match_pos = (self._match_pos + 1) % len(self._match_indices)
+        self._jump_to_match()
+
+    def action_prev_match(self) -> None:
+        """Jump to the previous search match (wraps around)."""
+        if not self._match_indices:
+            return
+        self._match_pos = (self._match_pos - 1) % len(self._match_indices)
+        self._jump_to_match()
 
     def action_download_all(self) -> None:
         if self.group.key != "policies":

@@ -154,7 +154,8 @@ class ResourceListScreen(Screen):
     async def _do_download_all(self) -> None:
         """Fetch all policies (paginating fully) and download all their documents."""
         status = self.query_one("#status-bar", Static)
-        dest_dir = Path.cwd()
+        dest_dir = Path.cwd() / "vanta-export" / "policies"
+        dest_dir.mkdir(parents=True, exist_ok=True)
 
         # Paginate through all policies first.
         status.update("Fetching all policies...")

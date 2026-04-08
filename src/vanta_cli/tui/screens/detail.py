@@ -95,7 +95,8 @@ class DetailScreen(Screen):
             self.notify("No documents to download", severity="warning")
             return
 
-        dest_dir = Path.cwd()
+        dest_dir = Path.cwd() / "vanta-export" / "policies"
+        dest_dir.mkdir(parents=True, exist_ok=True)
         policy_name = self.item.get("name", "")
         count = 0
         for i, doc in enumerate(docs):

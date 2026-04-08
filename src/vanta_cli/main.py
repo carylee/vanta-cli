@@ -1,23 +1,46 @@
+import sys
 from typing import Optional
 
 import typer
+from rich.console import Console
 
+from vanta_cli.config import Settings
 from vanta_cli.output import OutputFormat, set_format
+
+# Module-level settings, populated by the callback before subcommands run.
+_settings: Settings | None = None
+
+
+def get_settings() -> Settings:
+    """Get the active Settings instance (populated by the main callback)."""
+    global _settings
+    if _settings is None:
+        _settings = Settings.load()
+    return _settings
 
 app = typer.Typer(
     help="Vanta CLI - manage your compliance program from the terminal.",
-    no_args_is_help=True,
 )
 
 
-@app.callback()
+@app.callback(invoke_without_command=True)
 def main(
+    ctx: typer.Context,
     output: Optional[OutputFormat] = typer.Option(
         None, "--output", "-o", help="Output format: table, json, jsonl"
     ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", help="Auth profile: 'default' (read-write) or 'agent' (read-only, stages writes)."
+    ),
 ) -> None:
+    global _settings
     if output is not None:
         set_format(output)
+    _settings = Settings.load(profile=profile)
+    if ctx.invoked_subcommand is None:
+        from vanta_cli.tui.app import VantaTUI
+
+        VantaTUI().run()
 
 
 @app.command()
@@ -52,8 +75,10 @@ from vanta_cli.commands.vendor_risk_attributes import app as risk_attrs_app  # n
 from vanta_cli.commands.vendors import app as vendors_app  # noqa: E402
 from vanta_cli.commands.vulnerabilities import app as vulns_app  # noqa: E402
 from vanta_cli.commands.vulnerable_assets import app as vuln_assets_app  # noqa: E402
+from vanta_cli.commands.changeset import app as changeset_app  # noqa: E402
 from vanta_cli.commands.vulnerability_remediations import app as vuln_remediations_app  # noqa: E402
 
+app.add_typer(changeset_app, name="changeset", help="Review and apply staged changes from agent mode.")
 app.add_typer(controls_app, name="controls", help="Manage compliance controls.")
 app.add_typer(customer_trust_app, name="customer-trust", help="Manage customer trust accounts and questionnaires.")
 app.add_typer(discovered_vendors_app, name="discovered-vendors", help="Browse discovered vendors.")
@@ -73,3 +98,26 @@ app.add_typer(vendors_app, name="vendors", help="Manage vendors and risk.")
 app.add_typer(vulns_app, name="vulnerabilities", help="Manage vulnerabilities.")
 app.add_typer(vuln_assets_app, name="vulnerable-assets", help="Browse vulnerable assets.")
 app.add_typer(vuln_remediations_app, name="vulnerability-remediations", help="Manage vulnerability remediations.")
+
+
+def cli() -> None:
+    """Entry point that catches WriteIntercepted for friendly output."""
+    try:
+        app()
+    except SystemExit:
+        raise
+    except Exception as exc:
+        from vanta_cli.client import WriteIntercepted
+
+        if isinstance(exc, WriteIntercepted):
+            console = Console(stderr=True)
+            console.print(
+                f"[yellow]Change staged[/yellow] ({exc.entry['id']}): "
+                f"{exc.entry['method']} {exc.entry['path']}"
+            )
+            console.print(
+                "[dim]Run 'vanta changeset list' to review, "
+                "'vanta changeset apply' to execute.[/dim]"
+            )
+            sys.exit(3)
+        raise

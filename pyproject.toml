@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-vanta = "vanta_cli.main:app"
+vanta = "vanta_cli.main:cli"
 
 [build-system]
 requires = ["hatchling"]

@@ -24,7 +24,11 @@ class WriteIntercepted(Exception):
 
 class VantaClient:
     def __init__(self, settings: Settings | None = None) -> None:
-        self._settings = settings or Settings.load()
+        if settings is None:
+            # Use the global settings from the CLI if available, else load fresh
+            from vanta_cli.main import _settings
+            settings = _settings if _settings is not None else Settings.load()
+        self._settings = settings
         self._token: str | None = None
         self._http = httpx.Client(base_url=BASE_URL, timeout=30.0)
 

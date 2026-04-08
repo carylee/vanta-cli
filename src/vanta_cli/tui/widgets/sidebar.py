@@ -24,22 +24,25 @@ RESOURCE_GROUPS: list[ResourceGroup] = [
         ("id", "ID"), ("name", "Name"), ("status", "Status"), ("category", "Category"),
     ]),
     ResourceGroup("Controls", "controls", "/controls", [
-        ("id", "ID"), ("name", "Name"), ("status", "Status"),
+        ("externalId", "ID"), ("name", "Name"), ("owner.displayName", "Owner"),
     ]),
     ResourceGroup("Frameworks", "frameworks", "/frameworks", [
         ("id", "ID"), ("name", "Name"),
+        ("numControlsCompleted", "Controls OK"), ("numControlsTotal", "Controls Total"),
+        ("numTestsPassing", "Tests OK"), ("numTestsTotal", "Tests Total"),
     ]),
     ResourceGroup("People", "people", "/people", [
         ("id", "ID"), ("name.display", "Name"), ("email", "Email"), ("employment.status", "Status"),
     ]),
     ResourceGroup("Policies", "policies", "/policies", [
-        ("id", "ID"), ("name", "Name"),
+        ("id", "ID"), ("name", "Name"), ("status", "Status"),
     ]),
     ResourceGroup("Vendors", "vendors", "/vendors", [
-        ("id", "ID"), ("name", "Name"), ("category.displayName", "Category"), ("riskLevel", "Risk"),
+        ("id", "ID"), ("name", "Name"), ("category.displayName", "Category"),
+        ("inherentRiskLevel", "Risk"), ("status", "Status"),
     ]),
     ResourceGroup("Documents", "documents", "/documents", [
-        ("id", "ID"), ("name", "Name"),
+        ("id", "ID"), ("title", "Title"), ("category", "Category"), ("uploadStatus", "Status"),
     ]),
     ResourceGroup("Groups", "groups", "/groups", [
         ("id", "ID"), ("name", "Name"),
@@ -48,10 +51,11 @@ RESOURCE_GROUPS: list[ResourceGroup] = [
         ("id", "ID"), ("title", "Title"), ("severity", "Severity"), ("status", "Status"),
     ]),
     ResourceGroup("Vulnerable Assets", "vulnerable-assets", "/vulnerable-assets", [
-        ("id", "ID"), ("displayName", "Name"),
+        ("id", "ID"), ("name", "Name"), ("assetType", "Type"),
     ]),
     ResourceGroup("Vuln Remediations", "vuln-remediations", "/vulnerability-remediations", [
-        ("id", "ID"), ("title", "Title"),
+        ("id", "ID"), ("severity", "Severity"), ("slaDeadlineDate", "SLA Deadline"),
+        ("remediationDate", "Remediated"),
     ]),
     ResourceGroup("Trust Centers", "trust-centers", "/trust-center", []),
     ResourceGroup("Customer Trust", "customer-trust", "/customer-trust/accounts", [
@@ -64,16 +68,17 @@ RESOURCE_GROUPS: list[ResourceGroup] = [
         ("riskId", "ID"), ("description", "Description"), ("treatment", "Treatment"),
     ]),
     ResourceGroup("Discovered Vendors", "discovered-vendors", "/discovered-vendors", [
-        ("id", "ID"), ("name", "Name"),
+        ("id", "ID"), ("name", "Name"), ("source", "Source"), ("numberOfAccounts", "Accounts"),
     ]),
     ResourceGroup("Monitored Computers", "monitored-computers", "/monitored-computers", [
         ("id", "ID"), ("serialNumber", "Serial"), ("operatingSystem.type", "OS"),
+        ("owner.displayName", "Owner"),
     ]),
     ResourceGroup("Users", "users", "/users", [
-        ("id", "ID"), ("displayName", "Name"), ("email", "Email"),
+        ("id", "ID"), ("displayName", "Name"), ("email", "Email"), ("isActive", "Active"),
     ]),
     ResourceGroup("Vendor Risk Attributes", "vendor-risk-attrs", "/vendor-risk-attributes", [
-        ("id", "ID"), ("name", "Name"),
+        ("id", "ID"), ("name", "Name"), ("riskLevel", "Risk"), ("enabled", "Enabled"),
     ]),
 ]
 

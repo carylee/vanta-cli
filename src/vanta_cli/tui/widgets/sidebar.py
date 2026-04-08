@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from textual.binding import Binding
 from textual.message import Message
 from textual.widgets import Tree
 
@@ -79,6 +80,12 @@ RESOURCE_GROUPS: list[ResourceGroup] = [
 
 class Sidebar(Tree[ResourceGroup]):
     """Tree navigation for Vanta resource groups."""
+
+    BINDINGS = [
+        Binding("j", "cursor_down", "Down", show=False),
+        Binding("k", "cursor_up", "Up", show=False),
+        Binding("l", "select_cursor", "Open", show=False),
+    ]
 
     class Selected(Message):
         """Emitted when a resource group is selected."""

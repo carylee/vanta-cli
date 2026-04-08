@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from functools import partial
+from pathlib import Path
 from typing import Any
 
 from vanta_cli.client import VantaClient
@@ -65,3 +66,7 @@ class AsyncVantaService:
         """POST to an endpoint."""
         data = await self._run_sync(self._client.post, path, json=json)
         return data if data else {}
+
+    async def download_url(self, url: str, dest: Path) -> Path:
+        """Download from an external URL to a local file."""
+        return await self._run_sync(self._client.download_url, url, dest)

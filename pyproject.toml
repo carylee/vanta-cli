@@ -10,6 +10,8 @@ dependencies = [
     "typer>=0.15",
     "rich>=13.0",
     "textual>=3.0",
+    "platformdirs>=4.0",
+    "tomli-w>=1.0",
 ]
 
 [project.scripts]

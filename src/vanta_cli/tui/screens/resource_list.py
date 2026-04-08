@@ -35,8 +35,7 @@ class ResourceListScreen(Screen):
         Binding("escape", "go_back", "Back", show=False),
         Binding("j", "cursor_down", "Down", show=False),
         Binding("k", "cursor_up", "Up", show=False),
-        Binding("l", "select_row", "Open", show=False),
-        Binding("enter", "select_row", "Open"),
+        Binding("l", "select_row", "Open"),
         Binding("space", "load_more", "More"),
         Binding("g", "scroll_top", "Top"),
         Binding("G", "scroll_bottom", "Bottom", key_display="shift+g"),
@@ -124,6 +123,10 @@ class ResourceListScreen(Screen):
     def action_scroll_bottom(self) -> None:
         table = self.query_one("#resource-table", DataTable)
         table.action_scroll_end()
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        """Handle Enter key on the DataTable."""
+        self.action_select_row()
 
     def action_select_row(self) -> None:
         table = self.query_one("#resource-table", DataTable)

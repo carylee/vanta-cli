@@ -28,6 +28,11 @@ def tui() -> None:
     VantaTUI().run()
 
 
+# Register standalone commands
+from vanta_cli.commands.configure import configure  # noqa: E402
+
+app.command("configure", help="Set up your Vanta CLI identity.")(configure)
+
 # Register command groups
 from vanta_cli.commands.controls import app as controls_app  # noqa: E402
 from vanta_cli.commands.customer_trust import app as customer_trust_app  # noqa: E402

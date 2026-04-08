@@ -4,17 +4,27 @@ from __future__ import annotations
 
 from typing import Any
 
+from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.widgets import Footer, Header, Static
 
+from vanta_cli.config import load_user_config
 from vanta_cli.tui.screens.detail import DetailScreen
 from vanta_cli.tui.screens.resource_list import ResourceListScreen
 from vanta_cli.tui.screens.tests import TestEntityScreen
 from vanta_cli.tui.service import AsyncVantaService
 from vanta_cli.tui.widgets.breadcrumb import Breadcrumb
-from vanta_cli.tui.widgets.sidebar import ResourceGroup, Sidebar
+from vanta_cli.tui.widgets.dashboard import Dashboard
+from vanta_cli.tui.widgets.sidebar import ResourceGroup, RESOURCE_GROUPS, Sidebar
+
+
+def _find_group(key: str) -> ResourceGroup | None:
+    for g in RESOURCE_GROUPS:
+        if g.key == key:
+            return g
+    return None
 
 
 class VantaTUI(App):
@@ -32,9 +42,6 @@ class VantaTUI(App):
     #main-area {
         width: 1fr;
         height: 100%;
-    }
-    #welcome {
-        padding: 2 4;
     }
     .screen-title {
         dock: top;
@@ -76,12 +83,18 @@ class VantaTUI(App):
 
     BINDINGS = [
         Binding("q", "quit", "Quit"),
+        Binding("1", "my_tests", "My Tests"),
+        Binding("2", "code_changes", "Code Changes"),
+        Binding("3", "critical_vulns", "Vulns"),
+        Binding("4", "risk_review", "Risk Review"),
     ]
 
     def __init__(self) -> None:
         super().__init__()
         self.service = AsyncVantaService()
         self.breadcrumb = Breadcrumb()
+        user_config = load_user_config()
+        self.user_id = user_config.user_id
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -89,29 +102,53 @@ class VantaTUI(App):
         with Horizontal():
             yield Sidebar()
             with Static(id="main-area"):
-                yield Static(
-                    "Select a resource group from the sidebar to browse.\n\n"
-                    "Vim-style navigation:\n"
-                    "  [bold]j/k[/bold]      Move down/up\n"
-                    "  [bold]h[/bold]        Go back\n"
-                    "  [bold]l[/bold]/[bold]Enter[/bold]  Drill in / view details\n"
-                    "  [bold]g/G[/bold]      Jump to top/bottom\n"
-                    "  [bold]Space[/bold]    Load more results\n"
-                    "  [bold]/[/bold]        Focus filter\n"
-                    "  [bold]q[/bold]        Quit\n\n"
-                    "Test entities:\n"
-                    "  [bold]d[/bold]        Deactivate selected entity\n"
-                    "  [bold]r[/bold]        Reactivate selected entity\n"
-                    "  [bold]1/2/0[/bold]    Filter: Failing / Deactivated / All",
-                    id="welcome",
-                )
+                yield Dashboard(self.service, user_id=self.user_id)
         yield Footer()
+
+    # --- Quick action shortcuts ---
+
+    def action_my_tests(self) -> None:
+        group = _find_group("tests")
+        if not group:
+            return
+        params: dict[str, str] = {"statusFilter": "NEEDS_ATTENTION"}
+        if self.user_id:
+            params["ownerFilter"] = self.user_id
+        screen = ResourceListScreen(group, self.service, params=params)
+        self.push_screen(screen)
+        self.breadcrumb.push("My Failing Tests" if self.user_id else "Tests Needing Attention")
+
+    def action_code_changes(self) -> None:
+        test_id = "github-code-change-automated-checks-enabled"
+        screen = TestEntityScreen(test_id, "Code Changes", self.service)
+        self.push_screen(screen)
+        self.breadcrumb.push("Code Changes")
+
+    def action_critical_vulns(self) -> None:
+        group = _find_group("vulnerabilities")
+        if not group:
+            return
+        screen = ResourceListScreen(
+            group, self.service,
+            params={"severity": "CRITICAL", "isDeactivated": "false"},
+        )
+        self.push_screen(screen)
+        self.breadcrumb.push("Critical Vulnerabilities")
+
+    def action_risk_review(self) -> None:
+        group = _find_group("risk-scenarios")
+        if not group:
+            return
+        screen = ResourceListScreen(group, self.service)
+        self.push_screen(screen)
+        self.breadcrumb.push("Risk Scenarios")
+
+    # --- Navigation ---
 
     def on_sidebar_selected(self, message: Sidebar.Selected) -> None:
         """Navigate to a resource group list."""
         group = message.group
         if group.key == "tests":
-            # Tests get special handling — drill into entities
             screen = ResourceListScreen(group, self.service)
             self.push_screen(screen)
             self.breadcrumb.push(group.label)
@@ -136,9 +173,20 @@ class VantaTUI(App):
             self.breadcrumb.push(test_name)
         else:
             item_id = item.get("id") or item.get("riskId") or item.get("integrationId") or "detail"
-            screen = DetailScreen(item, title=f"{group.label}: {item_id}")
-            self.push_screen(screen)
             self.breadcrumb.push(str(item_id))
+            self._open_detail(group, item_id)
+
+    @work
+    async def _open_detail(self, group: ResourceGroup, item_id: str) -> None:
+        """Fetch full resource detail and open the detail screen."""
+        full_item = await self.service.get(f"{group.api_path}/{item_id}")
+        screen = DetailScreen(
+            full_item,
+            title=f"{group.label}: {item_id}",
+            service=self.service,
+            resource_type=group.key,
+        )
+        self.push_screen(screen)
 
     def on_screen_resume(self) -> None:
         """Pop breadcrumb when returning from a screen."""

@@ -81,6 +81,15 @@ class VantaClient:
                     f.write(chunk)
         return dest
 
+    def download_url(self, url: str, dest: Path) -> Path:
+        """Download from an arbitrary URL (e.g. pre-signed S3) and save to a file."""
+        with httpx.stream("GET", url, timeout=60.0) as resp:
+            resp.raise_for_status()
+            with dest.open("wb") as f:
+                for chunk in resp.iter_bytes():
+                    f.write(chunk)
+        return dest
+
     def paginate(
         self,
         path: str,

@@ -3,17 +3,71 @@ from __future__ import annotations
 import json
 import os
 import time
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
+import platformdirs
+import tomli_w
 from dotenv import load_dotenv
 
-TOKEN_CACHE_DIR = Path.home() / ".cache" / "vanta-cli"
-TOKEN_CACHE_FILE = TOKEN_CACHE_DIR / "token.json"
+APP_NAME = "vanta-cli"
+CACHE_DIR = Path(platformdirs.user_cache_dir(APP_NAME))
+CONFIG_DIR = Path(platformdirs.user_config_dir(APP_NAME))
+CONFIG_FILE = CONFIG_DIR / "config.toml"
+TOKEN_CACHE_FILE = CACHE_DIR / "token.json"
 TOKEN_URL = "https://api.vanta.com/oauth/token"
-# Refresh token 60s before actual expiry
 TOKEN_EXPIRY_BUFFER = 60
+
+
+@dataclass
+class UserConfig:
+    """User identity stored in config.toml."""
+
+    user_id: str | None = None
+    email: str | None = None
+    display_name: str | None = None
+
+
+def load_user_config() -> UserConfig:
+    """Load user config from config.toml, returning defaults if missing."""
+    if not CONFIG_FILE.exists():
+        return UserConfig()
+    try:
+        with CONFIG_FILE.open("rb") as f:
+            data = tomllib.load(f)
+        user = data.get("user", {})
+        return UserConfig(
+            user_id=user.get("id"),
+            email=user.get("email"),
+            display_name=user.get("display_name"),
+        )
+    except (tomllib.TOMLDecodeError, KeyError):
+        return UserConfig()
+
+
+def save_user_config(config: UserConfig) -> Path:
+    """Save user config to config.toml. Returns the config file path."""
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    data: dict = {}
+    if CONFIG_FILE.exists():
+        try:
+            with CONFIG_FILE.open("rb") as f:
+                data = tomllib.load(f)
+        except tomllib.TOMLDecodeError:
+            data = {}
+    user: dict = {}
+    if config.user_id:
+        user["id"] = config.user_id
+    if config.email:
+        user["email"] = config.email
+    if config.display_name:
+        user["display_name"] = config.display_name
+    data["user"] = user
+    with CONFIG_FILE.open("wb") as f:
+        tomli_w.dump(data, f)
+    return CONFIG_FILE
 
 
 @dataclass
@@ -21,6 +75,7 @@ class Settings:
     client_id: str
     client_secret: str
     organization: str
+    user_id: str | None = None
 
     @classmethod
     def load(cls) -> Settings:
@@ -33,10 +88,12 @@ class Settings:
                 "Missing VANTA_OAUTH_CLIENT_ID or VANTA_OAUTH_CLIENT_SECRET. "
                 "Set them in .env or as environment variables."
             )
+        user_config = load_user_config()
         return cls(
             client_id=client_id,
             client_secret=client_secret,
             organization=organization,
+            user_id=user_config.user_id,
         )
 
 
@@ -77,7 +134,7 @@ def _load_cached_token() -> str | None:
 
 
 def _save_cached_token(token: str, expires_in: int) -> None:
-    TOKEN_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
     TOKEN_CACHE_FILE.write_text(
         json.dumps(
             {

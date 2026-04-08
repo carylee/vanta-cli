@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
 from typing import Any
 
 from textual import work
@@ -25,6 +27,13 @@ def resolve_key(item: dict[str, Any], key: str) -> str:
         else:
             return ""
     return str(val) if val is not None else ""
+
+
+def _policy_filename(policy_name: str, index: int) -> str:
+    slug = re.sub(r"[^\w\s-]", "", policy_name).strip().lower()
+    slug = re.sub(r"[\s]+", "_", slug)
+    suffix = f"_{index}" if index > 0 else ""
+    return f"{slug}{suffix}.pdf"
 
 
 class ResourceListScreen(Screen):
@@ -75,6 +84,8 @@ class ResourceListScreen(Screen):
         table.cursor_type = "row"
         for key, header in self.group.columns:
             table.add_column(header, key=key)
+        if self.group.key == "policies":
+            self._bindings.bind("D", "download_all", "Download All", key_display="shift+d")
         self._load_page()
 
     @work
@@ -133,3 +144,46 @@ class ResourceListScreen(Screen):
         if table.cursor_row is not None and table.cursor_row < len(self._items):
             item = self._items[table.cursor_row]
             self.post_message(self.RowSelected(item, self.group))
+
+    def action_download_all(self) -> None:
+        if self.group.key != "policies":
+            return
+        self._do_download_all()
+
+    @work
+    async def _do_download_all(self) -> None:
+        """Fetch all policies (paginating fully) and download all their documents."""
+        status = self.query_one("#status-bar", Static)
+        dest_dir = Path.cwd()
+
+        # Paginate through all policies first.
+        status.update("Fetching all policies...")
+        all_policies: list[dict[str, Any]] = []
+        cursor: str | None = None
+        while True:
+            page = await self.service.list_page(self.group.api_path, cursor=cursor)
+            all_policies.extend(page.items)
+            if not page.has_more:
+                break
+            cursor = page.next_cursor
+
+        total = 0
+        for i, item in enumerate(all_policies):
+            policy_id = item.get("id", "")
+            policy_name = item.get("name", "")
+            status.update(f"Downloading policy {i + 1}/{len(all_policies)}: {policy_name}...")
+
+            full = await self.service.get(f"/policies/{policy_id}")
+            docs = (full.get("latestApprovedVersion") or {}).get("documents", [])
+
+            for j, doc in enumerate(docs):
+                url = doc.get("url", "")
+                if not url:
+                    continue
+                filename = _policy_filename(policy_name, j) if policy_name else f"policy_document_{policy_id}_{j}.pdf"
+                dest = dest_dir / filename
+                await self.service.download_url(url, dest)
+                total += 1
+
+        status.update(f"Downloaded {total} document(s) to {dest_dir}")
+        self.notify(f"Downloaded {total} document(s) to {dest_dir}", severity="information")

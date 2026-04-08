@@ -6,9 +6,20 @@ from typing import Any
 
 import httpx
 
+from vanta_cli.changeset import stage_change
 from vanta_cli.config import Settings, get_token
 
 BASE_URL = "https://api.vanta.com/v1"
+
+
+class WriteIntercepted(Exception):
+    """Raised when a write is staged instead of executed (agent profile)."""
+
+    def __init__(self, entry: dict) -> None:
+        self.entry = entry
+        super().__init__(
+            f"Change staged ({entry['id']}): {entry['method']} {entry['path']}"
+        )
 
 
 class VantaClient:
@@ -24,6 +35,15 @@ class VantaClient:
 
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._ensure_token()}"}
+
+    def _is_write_intercepted(self) -> bool:
+        """Check if writes should be staged instead of executed."""
+        return self._settings.profile == "agent"
+
+    def _intercept_write(self, method: str, path: str, body: dict | None = None) -> None:
+        """Stage a write operation and raise WriteIntercepted."""
+        entry = stage_change(method=method, path=path, body=body)
+        raise WriteIntercepted(entry)
 
     def _handle_response(self, resp: httpx.Response) -> Any:
         if resp.status_code == 401:
@@ -45,18 +65,26 @@ class VantaClient:
         return self._handle_response(resp)
 
     def post(self, path: str, json: dict[str, Any] | None = None) -> Any:
+        if self._is_write_intercepted():
+            self._intercept_write("POST", path, json)
         resp = self._http.post(path, headers=self._headers(), json=json)
         return self._handle_response(resp)
 
     def patch(self, path: str, json: dict[str, Any] | None = None) -> Any:
+        if self._is_write_intercepted():
+            self._intercept_write("PATCH", path, json)
         resp = self._http.patch(path, headers=self._headers(), json=json)
         return self._handle_response(resp)
 
     def delete(self, path: str) -> Any:
+        if self._is_write_intercepted():
+            self._intercept_write("DELETE", path, None)
         resp = self._http.delete(path, headers=self._headers())
         return self._handle_response(resp)
 
     def put(self, path: str, json: dict[str, Any] | None = None) -> Any:
+        if self._is_write_intercepted():
+            self._intercept_write("PUT", path, json)
         resp = self._http.put(path, headers=self._headers(), json=json)
         return self._handle_response(resp)
 

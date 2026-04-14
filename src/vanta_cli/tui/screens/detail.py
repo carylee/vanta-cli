@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 from textual import work
 from textual.app import ComposeResult
@@ -24,13 +24,11 @@ def _extract_doc_urls(item: dict[str, Any]) -> list[dict[str, Any]]:
     return version.get("documents", [])
 
 
-def _filename_from_url(url: str, index: int) -> str:
-    parsed = urlparse(url)
-    path = parsed.path.rstrip("/")
-    name = path.rsplit("/", 1)[-1] if path else ""
-    if not name or "." not in name:
-        name = f"policy_document_{index}.pdf"
-    return name
+def _policy_filename(policy_name: str, index: int) -> str:
+    slug = re.sub(r"[^\w\s-]", "", policy_name).strip().lower()
+    slug = re.sub(r"[\s]+", "_", slug)
+    suffix = f"_{index}" if index > 0 else ""
+    return f"{slug}{suffix}.pdf"
 
 
 class DetailScreen(Screen):
@@ -97,13 +95,15 @@ class DetailScreen(Screen):
             self.notify("No documents to download", severity="warning")
             return
 
-        dest_dir = Path.cwd()
+        dest_dir = Path.cwd() / "vanta-export" / "policies"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        policy_name = self.item.get("name", "")
         count = 0
         for i, doc in enumerate(docs):
             url = doc.get("url", "")
             if not url:
                 continue
-            filename = _filename_from_url(url, i)
+            filename = _policy_filename(policy_name, i) if policy_name else f"policy_document_{i}.pdf"
             dest = dest_dir / filename
             self.notify(f"Downloading {filename}...")
             await self.service.download_url(url, dest)

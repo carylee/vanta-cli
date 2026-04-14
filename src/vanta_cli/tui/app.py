@@ -11,6 +11,8 @@ from textual.containers import Horizontal
 from textual.widgets import Footer, Header, Static
 
 from vanta_cli.config import load_user_config
+from vanta_cli.changeset import CHANGESET_FILE
+from vanta_cli.tui.screens.changeset import ChangesetScreen
 from vanta_cli.tui.screens.detail import DetailScreen
 from vanta_cli.tui.screens.resource_list import ResourceListScreen
 from vanta_cli.tui.screens.tests import TestEntityScreen
@@ -148,7 +150,9 @@ class VantaTUI(App):
     def on_sidebar_selected(self, message: Sidebar.Selected) -> None:
         """Navigate to a resource group list."""
         group = message.group
-        if group.key == "tests":
+        if group.key == "changeset":
+            self._open_changeset()
+        elif group.key == "tests":
             screen = ResourceListScreen(group, self.service)
             self.push_screen(screen)
             self.breadcrumb.push(group.label)
@@ -158,6 +162,41 @@ class VantaTUI(App):
             self.breadcrumb.push(group.label)
         else:
             self.notify(f"{group.label} not yet browsable in TUI", severity="warning")
+
+    def _open_changeset(self) -> None:
+        """Open the changeset review screen."""
+        from vanta_cli.client import VantaClient
+        from vanta_cli.config import Settings
+
+        def apply_change(change: dict) -> str | None:
+            """Apply a single change using the default profile.
+
+            Returns None on success, or an error message string on failure.
+            """
+            try:
+                settings = Settings.load(profile="default")
+                client = VantaClient(settings=settings)
+                method = change["method"]
+                path = change["path"]
+                body = change.get("body")
+                if method == "POST":
+                    client.post(path, json=body)
+                elif method == "PATCH":
+                    client.patch(path, json=body)
+                elif method == "DELETE":
+                    client.delete(path)
+                elif method == "PUT":
+                    client.put(path, json=body)
+                return None
+            except Exception as exc:
+                return str(exc)
+
+        screen = ChangesetScreen(
+            changeset_file=CHANGESET_FILE,
+            apply_fn=apply_change,
+        )
+        self.push_screen(screen)
+        self.breadcrumb.push("Staged Changes")
 
     def on_resource_list_screen_row_selected(
         self, message: ResourceListScreen.RowSelected

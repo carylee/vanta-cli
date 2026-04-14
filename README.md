@@ -97,8 +97,61 @@ vanta people list --limit 10
 
 Run `vanta <command> --help` for full details on any command.
 
+## TUI
+
+Launch an interactive terminal UI to browse resources and review staged changes:
+
+```bash
+vanta tui
+```
+
+The TUI provides a sidebar for navigating resource groups, paginated tables with search (`/`) and filters (`f`), and a dedicated changeset review screen for staged changes. The changeset screen includes:
+
+- **Detail pane** showing the full request body of the highlighted change
+- **Parsed columns** breaking API paths into readable Path, Entity, and Action fields
+- **Auto-generated summaries** from request bodies when descriptions are empty
+- **Batch select** with `space` to toggle individual rows and `s` to select/deselect all
+- **Progress indicator** and rate limiting during batch apply
+
+## Profiles
+
+Use `--profile` to switch between execution modes:
+
+```bash
+# Default profile: reads and writes execute immediately
+vanta tests entities deactivate my-test <entity-id> --reason "..."
+
+# Agent profile: writes are staged for review instead of executed
+vanta --profile agent tests entities deactivate my-test <entity-id> --reason "..."
+```
+
+You can also set the profile via the `VANTA_PROFILE` environment variable:
+
+```bash
+export VANTA_PROFILE=agent
+```
+
+| Profile | Scopes | Behavior |
+|---|---|---|
+| `default` | `read` + `write` | Writes execute immediately |
+| `agent` | `read` only | Writes are staged to `vanta-export/changeset.json` |
+
+### Changeset commands
+
+Review and apply staged changes from the command line:
+
+```bash
+vanta changeset list              # List all staged changes
+vanta changeset show <id>         # Show details of a staged change
+vanta changeset apply <id>        # Apply a single staged change
+vanta changeset drop <id>         # Drop a single staged change
+vanta changeset clear             # Clear all staged changes
+```
+
+Or use `vanta tui` and navigate to **Staged Changes** for an interactive review experience.
+
 ## Authentication
 
-The CLI uses OAuth2 client credentials to obtain a Bearer token. Tokens are cached at `~/.cache/vanta-cli/token.json` and automatically refreshed when they expire (~1 hour).
+The CLI uses OAuth2 client credentials to obtain a Bearer token. Tokens are cached at `~/.cache/vanta-cli/token.json` (per profile) and automatically refreshed when they expire (~1 hour). If a token expires mid-session, the CLI transparently fetches a fresh one and retries the request.
 
-Scopes requested: `vanta-api.all:read vanta-api.all:write`.
+Scopes requested depend on the active profile (see [Profiles](#profiles) above).

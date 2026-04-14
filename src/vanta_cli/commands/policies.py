@@ -1,6 +1,6 @@
+import re
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlparse
 
 import typer
 
@@ -45,14 +45,12 @@ def _extract_doc_urls(policy: dict) -> list[dict]:
     return version.get("documents", [])
 
 
-def _filename_from_url(url: str, index: int) -> str:
-    """Derive a filename from a URL, falling back to a numbered name."""
-    parsed = urlparse(url)
-    path = parsed.path.rstrip("/")
-    name = path.rsplit("/", 1)[-1] if path else ""
-    if not name or "." not in name:
-        name = f"policy_document_{index}.pdf"
-    return name
+def _policy_filename(policy_name: str, index: int) -> str:
+    """Build a filename from the policy name, e.g. 'Third-Party Management Policy' -> 'third-party_management_policy.pdf'."""
+    slug = re.sub(r"[^\w\s-]", "", policy_name).strip().lower()
+    slug = re.sub(r"[\s]+", "_", slug)
+    suffix = f"_{index}" if index > 0 else ""
+    return f"{slug}{suffix}.pdf"
 
 
 @app.command("download")
@@ -62,11 +60,12 @@ def download_policy(
         Path("."), "--dir", "-d", help="Directory to save files to."
     ),
 ) -> None:
-    """Download PDF documents for a policy."""
+    """Download PDF documents for a single policy."""
     client = VantaClient()
     data = client.get(f"/policies/{policy_id}")
     policy = data.get("results", data)
 
+    policy_name = policy.get("name", "")
     docs = _extract_doc_urls(policy)
     if not docs:
         print_error(f"No documents found for policy {policy_id}")
@@ -78,7 +77,42 @@ def download_policy(
         url = doc.get("url", "")
         if not url:
             continue
-        filename = _filename_from_url(url, i)
+        filename = _policy_filename(policy_name, i) if policy_name else f"policy_document_{i}.pdf"
         dest = output_dir / filename
         client.download_url(url, dest)
         print_success(f"Downloaded {dest}")
+
+
+@app.command("download-all")
+def download_all_policies(
+    output_dir: Path = typer.Option(
+        Path("vanta-export/policies"), "--dir", "-d", help="Directory to save files to."
+    ),
+) -> None:
+    """Download PDF documents for all policies."""
+    client = VantaClient()
+    policies = list(client.paginate("/policies"))
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    total = 0
+    for i, policy_summary in enumerate(policies):
+        policy_id = policy_summary.get("id", "")
+        policy_name = policy_summary.get("name", "")
+        print(f"[{i + 1}/{len(policies)}] {policy_name}...")
+
+        data = client.get(f"/policies/{policy_id}")
+        policy = data.get("results", data)
+        docs = _extract_doc_urls(policy)
+
+        for j, doc in enumerate(docs):
+            url = doc.get("url", "")
+            if not url:
+                continue
+            filename = _policy_filename(policy_name, j) if policy_name else f"policy_document_{policy_id}_{j}.pdf"
+            dest = output_dir / filename
+            client.download_url(url, dest)
+            print_success(f"  Downloaded {dest}")
+            total += 1
+
+    print_success(f"\nDownloaded {total} document(s) to {output_dir}")

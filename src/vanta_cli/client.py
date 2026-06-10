@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,11 @@ from vanta_cli.changeset import stage_change
 from vanta_cli.config import CACHE_DIR, PROFILES, Settings, get_token
 
 BASE_URL = "https://api.vanta.com/v1"
+
+# 429 retry policy: backoff in seconds for attempts 1..N, used when the
+# response has no Retry-After header. The length of this list caps retries.
+RATE_LIMIT_BACKOFF = (1.0, 2.0, 4.0, 8.0, 16.0)
+MAX_RETRY_AFTER = 60.0  # ignore absurd Retry-After values to avoid hanging the TUI
 
 
 class WriteIntercepted(Exception):
@@ -56,6 +62,18 @@ class VantaClient:
         entry = stage_change(method=method, path=path, body=body)
         raise WriteIntercepted(entry)
 
+    def _retry_after_seconds(self, resp: httpx.Response, attempt: int) -> float:
+        """Seconds to wait before retrying a 429, honoring Retry-After if present."""
+        header = resp.headers.get("Retry-After")
+        if header:
+            try:
+                return min(float(header), MAX_RETRY_AFTER)
+            except ValueError:
+                # Retry-After can be an HTTP date; fall through to backoff in that case.
+                pass
+        # attempt is 1-indexed; clamp to the last backoff value for safety.
+        return RATE_LIMIT_BACKOFF[min(attempt, len(RATE_LIMIT_BACKOFF)) - 1]
+
     def _handle_response(self, resp: httpx.Response) -> Any:
         if resp.status_code == 403:
             raise SystemExit(
@@ -77,7 +95,8 @@ class VantaClient:
         params: dict[str, Any] | None = None,
         json: dict[str, Any] | None = None,
     ) -> Any:
-        """Send a request, retrying once on 401 with a fresh token."""
+        """Send a request, retrying once on 401 with a fresh token and backing
+        off on 429 rate limits."""
         kwargs: dict[str, Any] = {"headers": self._headers()}
         if params is not None:
             kwargs["params"] = params
@@ -95,6 +114,12 @@ class VantaClient:
                     "Authentication failed (401). Check your VANTA_OAUTH_CLIENT_ID "
                     "and VANTA_OAUTH_CLIENT_SECRET in .env"
                 )
+
+        for attempt in range(1, len(RATE_LIMIT_BACKOFF) + 1):
+            if resp.status_code != 429:
+                break
+            time.sleep(self._retry_after_seconds(resp, attempt))
+            resp = self._http.request(method, path, **kwargs)
 
         return self._handle_response(resp)
 

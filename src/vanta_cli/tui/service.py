@@ -10,6 +10,11 @@ from typing import Any
 
 from vanta_cli.client import VantaClient
 
+# Cap concurrent in-flight API requests so bursts (e.g. the dashboard firing
+# several list calls at once) don't trip Vanta's rate limiter. The client still
+# backs off on any 429s that slip through; this keeps them rare.
+MAX_CONCURRENT_REQUESTS = 4
+
 
 @dataclass
 class Page:
@@ -25,10 +30,18 @@ class AsyncVantaService:
 
     def __init__(self) -> None:
         self._client = VantaClient()
+        self._semaphore: asyncio.Semaphore | None = None
+
+    def _gate(self) -> asyncio.Semaphore:
+        """Lazily create the concurrency gate on the running loop."""
+        if self._semaphore is None:
+            self._semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+        return self._semaphore
 
     async def _run_sync(self, fn, *args, **kwargs):
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, partial(fn, *args, **kwargs))
+        async with self._gate():
+            return await loop.run_in_executor(None, partial(fn, *args, **kwargs))
 
     async def list_page(
         self,

@@ -20,6 +20,11 @@ TOKEN_CACHE_FILE = CACHE_DIR / "token.json"
 TOKEN_URL = "https://api.vanta.com/oauth/token"
 TOKEN_EXPIRY_BUFFER = 60
 
+# 429 backoff for the OAuth token endpoint. Seconds to wait per retry attempt
+# when no Retry-After header is given; the tuple length caps total retries.
+TOKEN_RETRY_BACKOFF = (1.0, 2.0, 4.0, 8.0, 16.0)
+TOKEN_MAX_RETRY_AFTER = 60.0
+
 PROFILES: dict[str, dict[str, str]] = {
     "default": {
         "scope": "vanta-api.all:read vanta-api.all:write",
@@ -125,15 +130,18 @@ def get_token(settings: Settings) -> str:
     if cached:
         return cached
 
-    resp = httpx.post(
-        TOKEN_URL,
-        json={
-            "client_id": settings.client_id,
-            "client_secret": settings.client_secret,
-            "scope": profile_info["scope"],
-            "grant_type": "client_credentials",
-        },
-    )
+    payload = {
+        "client_id": settings.client_id,
+        "client_secret": settings.client_secret,
+        "scope": profile_info["scope"],
+        "grant_type": "client_credentials",
+    }
+    resp = httpx.post(TOKEN_URL, json=payload)
+    for attempt in range(1, len(TOKEN_RETRY_BACKOFF) + 1):
+        if resp.status_code != 429:
+            break
+        time.sleep(_token_retry_after(resp, attempt))
+        resp = httpx.post(TOKEN_URL, json=payload)
     resp.raise_for_status()
     data = resp.json()
 
@@ -141,6 +149,17 @@ def get_token(settings: Settings) -> str:
     expires_in = data.get("expires_in", 3600)
     _save_cached_token(token, expires_in, cache_file)
     return token
+
+
+def _token_retry_after(resp: httpx.Response, attempt: int) -> float:
+    """Seconds to wait before retrying a 429 from the token endpoint."""
+    header = resp.headers.get("Retry-After")
+    if header:
+        try:
+            return min(float(header), TOKEN_MAX_RETRY_AFTER)
+        except ValueError:
+            pass  # Retry-After may be an HTTP date; fall back to backoff.
+    return TOKEN_RETRY_BACKOFF[min(attempt, len(TOKEN_RETRY_BACKOFF)) - 1]
 
 
 def _load_cached_token(cache_file: Path) -> str | None:

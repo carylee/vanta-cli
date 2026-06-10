@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -36,11 +37,18 @@ class VantaClient:
             settings = _settings if _settings is not None else Settings.load()
         self._settings = settings
         self._token: str | None = None
+        # Serializes token fetches so concurrent TUI requests on a cold cache
+        # don't stampede the OAuth endpoint (and trip its rate limiter).
+        self._token_lock = threading.Lock()
         self._http = httpx.Client(base_url=BASE_URL, timeout=30.0)
 
     def _ensure_token(self) -> str:
         if self._token is None:
-            self._token = get_token(self._settings)
+            with self._token_lock:
+                # Re-check inside the lock: another thread may have fetched it
+                # while we were waiting.
+                if self._token is None:
+                    self._token = get_token(self._settings)
         return self._token
 
     def _invalidate_token(self) -> None:

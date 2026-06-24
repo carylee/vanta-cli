@@ -3,7 +3,7 @@ from typing import Optional
 import typer
 
 from vanta_cli.client import VantaClient
-from vanta_cli.output import print_detail, print_list, print_success
+from vanta_cli.output import print_detail, print_error, print_list, print_success
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -71,16 +71,34 @@ def deactivate(
     ids: list[str] = typer.Argument(help="Vulnerability IDs to deactivate."),
     reason: str = typer.Option(..., "--reason", "-r", help="Reason for deactivation."),
     until: Optional[str] = typer.Option(None, "--until", help="Auto-reactivate date (ISO)."),
+    reactivate_when_fixable: bool = typer.Option(
+        True,
+        "--reactivate-when-fixable/--no-reactivate-when-fixable",
+        help="Reactivate automatically once a fix becomes available. "
+        "Use --no-reactivate-when-fixable for out-of-scope assets that should stay deactivated regardless.",
+    ),
 ) -> None:
     """Deactivate one or more vulnerabilities."""
     client = VantaClient()
     updates = []
     for vid in ids:
-        entry: dict = {"id": vid, "deactivateReason": reason}
+        # shouldReactivateWhenFixable is required by the API.
+        entry: dict = {
+            "id": vid,
+            "deactivateReason": reason,
+            "shouldReactivateWhenFixable": reactivate_when_fixable,
+        }
         if until:
             entry["deactivateUntilDate"] = until
         updates.append(entry)
-    client.post("/vulnerabilities/deactivate", json={"updates": updates})
+    data = client.post("/vulnerabilities/deactivate", json={"updates": updates})
+
+    results = (data or {}).get("results", [])
+    failures = [r for r in results if r.get("status") != "SUCCESS"]
+    if failures:
+        for r in failures:
+            print_error(f"Failed to deactivate {r.get('id')}: {r.get('status')}")
+        raise typer.Exit(1)
     print_success(f"Deactivated {len(ids)} vulnerability(ies)")
 
 

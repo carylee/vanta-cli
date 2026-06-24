@@ -106,8 +106,10 @@ def deactivate_entity(
     if until:
         body["deactivateUntilDate"] = until
 
+    # This endpoint returns 202 Accepted and processes asynchronously; the entity
+    # status does not flip immediately. Verify later via `entities list --status DEACTIVATED`.
     client.post(f"/tests/{test_id}/entities/{entity_id}/deactivate", json=body)
-    print_success(f"Deactivated entity {entity_id} on test {test_id}")
+    print_success(f"Deactivation queued for entity {entity_id} on test {test_id} (async; verify it moves to DEACTIVATED)")
 
 
 @entities_app.command("reactivate")
